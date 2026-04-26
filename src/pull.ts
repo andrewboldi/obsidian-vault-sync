@@ -69,7 +69,10 @@ async function runWithConcurrency<T>(
 
 const CONCURRENCY = 8;
 
-export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
+export async function pullFromGitHub(
+    plugin: VaultSyncPlugin,
+    opts: { silent?: boolean } = {}
+): Promise<void> {
     const { pat, repoUrl, branch, lastCommitSha, fileShaMap } = plugin.settings;
     if (!pat) throw new Error("Set a GitHub PAT in Vault Sync settings.");
     if (!repoUrl) throw new Error("Set a repo URL in Vault Sync settings.");
@@ -80,24 +83,28 @@ export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     }
 
     const ref = parseRepoUrl(repoUrl);
-    const notice = new Notice("Vault Sync: checking remote…", 0);
+    const notice = opts.silent
+        ? null
+        : new Notice("Vault Sync: checking remote…", 0);
 
     const headSha = await getBranchSha(ref, branch || "main", pat);
     if (headSha === lastCommitSha) {
-        notice.setMessage("Vault Sync: already up to date");
-        setTimeout(() => notice.hide(), 4000);
+        if (notice) {
+            notice?.setMessage("Vault Sync: already up to date");
+            setTimeout(() => notice?.hide(), 4000);
+        }
         return;
     }
 
-    notice.setMessage(`Vault Sync: comparing ${lastCommitSha.slice(0, 7)}…${headSha.slice(0, 7)}`);
+    notice?.setMessage(`Vault Sync: comparing ${lastCommitSha.slice(0, 7)}…${headSha.slice(0, 7)}`);
 
     const cmp = await compareCommits(ref, lastCommitSha, headSha, pat);
 
     if (cmp.status === "diverged") {
-        notice.setMessage(
+        notice?.setMessage(
             "Vault Sync: remote diverged from local baseline. Manual resolution needed (Phase 3 push will detect this)."
         );
-        setTimeout(() => notice.hide(), 10000);
+        setTimeout(() => notice?.hide(), 10000);
         throw new Error(
             `Remote and local have diverged (ahead ${cmp.ahead_by}, behind ${cmp.behind_by}). Vault Sync can only fast-forward in Phase 2.`
         );
@@ -107,8 +114,8 @@ export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     if (files.length === 0) {
         plugin.settings.lastCommitSha = headSha;
         await plugin.saveSettings();
-        notice.setMessage("Vault Sync: pull complete (no file changes)");
-        setTimeout(() => notice.hide(), 4000);
+        notice?.setMessage("Vault Sync: pull complete (no file changes)");
+        setTimeout(() => notice?.hide(), 4000);
         return;
     }
 
@@ -142,7 +149,7 @@ export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
         }
     }
 
-    notice.setMessage(
+    notice?.setMessage(
         `Vault Sync: ${toFetch.length} to fetch, ${toRemove.length} to remove…`
     );
 
@@ -163,7 +170,7 @@ export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
         done++;
         bytes += content.byteLength;
         if (done % 5 === 0) {
-            notice.setMessage(
+            notice?.setMessage(
                 `Vault Sync: ${done}/${toFetch.length} files, ${formatBytes(bytes)}`
             );
         }
@@ -173,8 +180,8 @@ export async function pullFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     plugin.settings.fileShaMap = fileShaMap;
     await plugin.saveSettings();
 
-    notice.setMessage(
+    notice?.setMessage(
         `Vault Sync: pull complete — ${toFetch.length} updated, ${toRemove.length} removed @ ${headSha.slice(0, 7)}`
     );
-    setTimeout(() => notice.hide(), 6000);
+    setTimeout(() => notice?.hide(), 6000);
 }

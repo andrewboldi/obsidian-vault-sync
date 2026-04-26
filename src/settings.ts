@@ -7,6 +7,7 @@ export interface VaultSyncSettings {
     branch: string;
     lastCommitSha: string;
     fileShaMap: Record<string, string>;
+    autoSyncIntervalMinutes: number; // 0 = disabled
 }
 
 export const DEFAULT_SETTINGS: VaultSyncSettings = {
@@ -15,6 +16,7 @@ export const DEFAULT_SETTINGS: VaultSyncSettings = {
     branch: "main",
     lastCommitSha: "",
     fileShaMap: {},
+    autoSyncIntervalMinutes: 0,
 };
 
 export class VaultSyncSettingTab extends PluginSettingTab {
@@ -69,6 +71,23 @@ export class VaultSyncSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.branch = value.trim() || "main";
                         await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Auto-sync interval (minutes)")
+            .setDesc(
+                "Pull then push every N minutes. 0 disables. Recommended: 1-5."
+            )
+            .addText((text) =>
+                text
+                    .setPlaceholder("0")
+                    .setValue(String(this.plugin.settings.autoSyncIntervalMinutes ?? 0))
+                    .onChange(async (value) => {
+                        const n = Math.max(0, Math.floor(Number(value) || 0));
+                        this.plugin.settings.autoSyncIntervalMinutes = n;
+                        await this.plugin.saveSettings();
+                        this.plugin.scheduleAutoSync();
                     })
             );
 
