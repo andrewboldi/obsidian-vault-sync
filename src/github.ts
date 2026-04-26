@@ -137,6 +137,146 @@ export async function getTree(
 }
 
 /**
+ * Get the tree SHA for a commit. Used as base_tree when building a new commit.
+ */
+export async function getCommitTreeSha(
+    ref: RepoRef,
+    commitSha: string,
+    pat: string
+): Promise<string> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/commits/${commitSha}`;
+    const res = await requestUrl({
+        url,
+        method: "GET",
+        headers: authHeaders(pat),
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(`Commit lookup failed: ${res.status}`);
+    }
+    return (res.json as { tree: { sha: string } }).tree.sha;
+}
+
+/**
+ * Create a blob from raw binary data. Returns the new blob SHA.
+ * Content is base64-encoded for transit. Max 100MB per file (GitHub limit).
+ */
+export async function createBlob(
+    ref: RepoRef,
+    content: ArrayBuffer,
+    pat: string
+): Promise<string> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/blobs`;
+    // base64 encode
+    const bytes = new Uint8Array(content);
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    const b64 = btoa(binary);
+    const res = await requestUrl({
+        url,
+        method: "POST",
+        headers: { ...authHeaders(pat), "Content-Type": "application/json" },
+        body: JSON.stringify({ content: b64, encoding: "base64" }),
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(
+            `Blob create failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+        );
+    }
+    return (res.json as { sha: string }).sha;
+}
+
+export interface TreeUpdateEntry {
+    path: string;
+    mode: "100644" | "100755" | "040000" | "160000" | "120000";
+    type: "blob" | "tree" | "commit";
+    sha: string | null; // null = delete
+}
+
+/**
+ * Create a new tree as a delta on top of base_tree. Returns new tree SHA.
+ * Entries with sha=null are deletions.
+ */
+export async function createTree(
+    ref: RepoRef,
+    baseTreeSha: string,
+    entries: TreeUpdateEntry[],
+    pat: string
+): Promise<string> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/trees`;
+    const res = await requestUrl({
+        url,
+        method: "POST",
+        headers: { ...authHeaders(pat), "Content-Type": "application/json" },
+        body: JSON.stringify({ base_tree: baseTreeSha, tree: entries }),
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(
+            `Tree create failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+        );
+    }
+    return (res.json as { sha: string }).sha;
+}
+
+/**
+ * Create a commit object. Returns the new commit SHA.
+ */
+export async function createCommit(
+    ref: RepoRef,
+    message: string,
+    treeSha: string,
+    parentShas: string[],
+    pat: string
+): Promise<string> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/commits`;
+    const res = await requestUrl({
+        url,
+        method: "POST",
+        headers: { ...authHeaders(pat), "Content-Type": "application/json" },
+        body: JSON.stringify({ message, tree: treeSha, parents: parentShas }),
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(
+            `Commit create failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+        );
+    }
+    return (res.json as { sha: string }).sha;
+}
+
+/**
+ * Update a branch ref to point at a new commit. Returns true on success,
+ * false if the branch advanced under us (caller should pull and retry).
+ */
+export async function updateRef(
+    ref: RepoRef,
+    branch: string,
+    newCommitSha: string,
+    pat: string
+): Promise<{ ok: boolean; status: number; message: string }> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/refs/heads/${encodeURIComponent(
+        branch
+    )}`;
+    const res = await requestUrl({
+        url,
+        method: "PATCH",
+        headers: { ...authHeaders(pat), "Content-Type": "application/json" },
+        body: JSON.stringify({ sha: newCommitSha, force: false }),
+        throw: false,
+    });
+    return {
+        ok: res.status >= 200 && res.status < 300,
+        status: res.status,
+        message: (res.text || "").slice(0, 300),
+    };
+}
+
+/**
  * Download a single file's raw bytes via the Contents API.
  * Uses `Accept: application/vnd.github.raw` so requestUrl returns
  * an ArrayBuffer directly — no base64 overhead.
