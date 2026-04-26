@@ -1,7 +1,7 @@
 {
     "id": "obsidian-vault-sync",
     "name": "Vault Sync (REST)",
-    "version": "0.5.0",
+    "version": "1.0.0",
     "minAppVersion": "1.4.0",
     "description": "Sync Obsidian vault with GitHub via REST API. Works on iOS for any vault size including images.",
     "author": "Andrew Boldi",

@@ -12,10 +12,18 @@ export default class VaultSyncPlugin extends Plugin {
     settings!: VaultSyncSettings;
     private autoSyncTimer: number | null = null;
     private autoSyncRunning = false;
+    private statusBar: HTMLElement | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
         this.addSettingTab(new VaultSyncSettingTab(this.app, this));
+
+        this.statusBar = this.addStatusBarItem();
+        this.updateStatusBar("idle");
+
+        this.addRibbonIcon("refresh-cw", "Vault Sync: Sync now", () => {
+            void this.runWithErrorNotice("sync", () => this.runSync(false));
+        });
 
         this.addCommand({
             id: "seed-from-github",
@@ -44,6 +52,15 @@ export default class VaultSyncPlugin extends Plugin {
         this.scheduleAutoSync();
     }
 
+    private updateStatusBar(state: "idle" | "syncing" | "error", detail?: string): void {
+        if (!this.statusBar) return;
+        const sha = this.settings.lastCommitSha
+            ? this.settings.lastCommitSha.slice(0, 7)
+            : "(unseeded)";
+        const icon = state === "syncing" ? "⟳" : state === "error" ? "⚠" : "✓";
+        this.statusBar.setText(`${icon} Vault Sync ${sha}${detail ? ` — ${detail}` : ""}`);
+    }
+
     onunload(): void {
         if (this.autoSyncTimer !== null) {
             window.clearInterval(this.autoSyncTimer);
@@ -65,9 +82,14 @@ export default class VaultSyncPlugin extends Plugin {
     async runSync(silent: boolean): Promise<void> {
         if (this.autoSyncRunning) return;
         this.autoSyncRunning = true;
+        this.updateStatusBar("syncing");
         try {
             await pullFromGitHub(this, { silent });
             await pushToGitHub(this, { silent });
+            this.updateStatusBar("idle");
+        } catch (e) {
+            this.updateStatusBar("error", e instanceof Error ? e.message.slice(0, 40) : "");
+            throw e;
         } finally {
             this.autoSyncRunning = false;
         }
