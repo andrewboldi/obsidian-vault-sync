@@ -1,0 +1,26 @@
+{
+    "name": "obsidian-vault-sync",
+    "version": "0.1.0",
+    "description": "Sync Obsidian vault with GitHub via REST API. Works on iOS for any vault size including images.",
+    "main": "main.js",
+    "scripts": {
+        "dev": "node esbuild.config.mjs",
+        "build": "node esbuild.config.mjs production"
+    },
+    "keywords": [
+        "obsidian",
+        "obsidian-plugin",
+        "github",
+        "sync",
+        "ios"
+    ],
+    "author": "Andrew Boldi",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "esbuild": "^0.24.2",
+        "obsidian": "^1.4.0",
+        "tslib": "^2.6.2",
+        "typescript": "^5.3.3"
+    }
+}

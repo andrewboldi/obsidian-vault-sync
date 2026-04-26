@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+.env
+data.json
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts (main.js IS committed for BRAT)
+*.map

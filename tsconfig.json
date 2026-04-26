@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "baseUrl": ".",
+        "inlineSourceMap": true,
+        "inlineSources": true,
+        "module": "ESNext",
+        "target": "ES2020",
+        "allowJs": true,
+        "noImplicitAny": true,
+        "strict": true,
+        "isolatedModules": true,
+        "moduleResolution": "node",
+        "importHelpers": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "lib": [
+            "DOM",
+            "ES2020",
+            "ES2021.WeakRef"
+        ]
+    },
+    "include": [
+        "src/**/*.ts"
+    ]
+}
