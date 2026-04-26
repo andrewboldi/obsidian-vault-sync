@@ -59,6 +59,45 @@ export function tarballUrl(ref: RepoRef, sha: string): string {
     return `${API_BASE}/repos/${ref.owner}/${ref.repo}/tarball/${sha}`;
 }
 
+export interface CompareFile {
+    sha: string; // new blob sha (empty for removed)
+    filename: string;
+    status: "added" | "modified" | "removed" | "renamed" | "copied" | "changed" | "unchanged";
+    previous_filename?: string;
+}
+
+export interface CompareResponse {
+    status: "ahead" | "behind" | "diverged" | "identical";
+    ahead_by: number;
+    behind_by: number;
+    files?: CompareFile[];
+}
+
+/**
+ * Compare two commits. Returns the file-level diff (added/modified/removed/renamed).
+ * Limited to 300 files per response — Vault Sync warns if truncated.
+ */
+export async function compareCommits(
+    ref: RepoRef,
+    base: string,
+    head: string,
+    pat: string
+): Promise<CompareResponse> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/compare/${base}...${head}`;
+    const res = await requestUrl({
+        url,
+        method: "GET",
+        headers: authHeaders(pat),
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(
+            `Compare failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+        );
+    }
+    return res.json as CompareResponse;
+}
+
 export interface TreeEntry {
     path: string;
     mode: string;

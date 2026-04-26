@@ -5,6 +5,7 @@ import {
     type VaultSyncSettings,
 } from "./settings";
 import { seedFromGitHub } from "./seed";
+import { pullFromGitHub } from "./pull";
 
 export default class VaultSyncPlugin extends Plugin {
     settings!: VaultSyncSettings;
@@ -23,6 +24,20 @@ export default class VaultSyncPlugin extends Plugin {
                     const msg = e instanceof Error ? e.message : String(e);
                     console.error("[Vault Sync] seed failed", e);
                     new Notice(`Vault Sync seed failed: ${msg}`, 10000);
+                }
+            },
+        });
+
+        this.addCommand({
+            id: "pull-from-github",
+            name: "Pull from GitHub",
+            callback: async () => {
+                try {
+                    await pullFromGitHub(this);
+                } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    console.error("[Vault Sync] pull failed", e);
+                    new Notice(`Vault Sync pull failed: ${msg}`, 10000);
                 }
             },
         });
