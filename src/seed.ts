@@ -1,11 +1,6 @@
 import { Notice } from "obsidian";
 import type VaultSyncPlugin from "./main";
-import {
-    authHeaders,
-    getBranchSha,
-    parseRepoUrl,
-    tarballUrl,
-} from "./github";
+import { downloadTarball, getBranchSha, parseRepoUrl } from "./github";
 import { parseTar } from "./tar";
 
 function formatBytes(n: number): string {
@@ -72,29 +67,34 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
 
     notice.setMessage(`Vault Sync: downloading ${ref.owner}/${ref.repo}@${sha.slice(0, 7)}…`);
 
-    const url = tarballUrl(ref, sha);
-    const res = await fetch(url, { headers: authHeaders(pat) });
-    if (!res.ok || !res.body) {
+    let compressed: ArrayBuffer;
+    try {
+        compressed = await downloadTarball(ref, sha, pat);
+    } catch (e) {
         notice.hide();
-        const body = res.body ? await res.text().catch(() => "") : "";
-        throw new Error(
-            `Tarball fetch failed: ${res.status} ${res.statusText} — ${body.slice(0, 300)}`
-        );
+        throw e;
     }
 
-    // GitHub serves tarballs with Content-Encoding: gzip already applied to a
-    // *tar.gz* payload. fetch() automatically decompresses transport-level
-    // Content-Encoding, but the body itself is still a gzipped tar — we must
-    // pipe through DecompressionStream('gzip') ourselves.
+    notice.setMessage(
+        `Vault Sync: decompressing ${formatBytes(compressed.byteLength)}…`
+    );
+
+    // Wrap the in-memory compressed buffer as a ReadableStream so we can pipe
+    // through gzip decompression and tar parsing without holding two copies.
+    const sourceStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+            controller.enqueue(new Uint8Array(compressed));
+            controller.close();
+        },
+    });
+
     let tarStream: ReadableStream<Uint8Array>;
     try {
-        tarStream = res.body.pipeThrough(new DecompressionStream("gzip"));
+        tarStream = sourceStream.pipeThrough(new DecompressionStream("gzip"));
     } catch (e) {
         notice.hide();
         throw new Error(
-            "DecompressionStream('gzip') is not available in this WebView. " +
-                "Vault Sync requires iOS 16.4+/modern Chromium. " +
-                String(e)
+            `DecompressionStream('gzip') unavailable: ${String(e)}`
         );
     }
 
