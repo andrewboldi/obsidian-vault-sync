@@ -1,7 +1,7 @@
 {
-    "id": "vault-sync",
+    "id": "vault-sync-rest",
     "name": "Vault Sync (REST)",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "minAppVersion": "1.4.0",
     "description": "Two-way sync with a GitHub repo via REST API. Works on iOS for vaults of any size including images, where git-protocol plugins crash from WebView memory limits.",
     "author": "Andrew Boldi",

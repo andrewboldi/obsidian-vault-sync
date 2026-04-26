@@ -76,7 +76,7 @@ That's it. Edit on phone → 1 minute later it's a real commit on GitHub. Edit o
 - `.obsidian/plugins/**` — plugin code/configs are per-device. Each install pulls them fresh from BRAT/community store. Avoids leaking credentials in plugin `data.json` files.
 - `.obsidian/workspace*`, `.obsidian/cache`, `.obsidian/appearance.json` — UI/UX state, per-device.
 - `.trash/`, `.DS_Store`, `*.tmp`
-- The plugin's own settings file (your PAT lives in `.obsidian/plugins/vault-sync/data.json` — protected by the rule above)
+- The plugin's own settings file (your PAT lives in `.obsidian/plugins/vault-sync-rest/data.json` — protected by the rule above)
 
 What still syncs from `.obsidian/`:
 - `.obsidian/community-plugins.json` — list of which plugins to enable (so each device knows what to install)
