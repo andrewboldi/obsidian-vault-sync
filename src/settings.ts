@@ -6,6 +6,7 @@ export interface VaultSyncSettings {
     repoUrl: string;
     branch: string;
     lastCommitSha: string;
+    fileShaMap: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: VaultSyncSettings = {
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: VaultSyncSettings = {
     repoUrl: "",
     branch: "main",
     lastCommitSha: "",
+    fileShaMap: {},
 };
 
 export class VaultSyncSettingTab extends PluginSettingTab {

@@ -59,26 +59,71 @@ export function tarballUrl(ref: RepoRef, sha: string): string {
     return `${API_BASE}/repos/${ref.owner}/${ref.repo}/tarball/${sha}`;
 }
 
+export interface TreeEntry {
+    path: string;
+    mode: string;
+    type: "blob" | "tree" | "commit";
+    sha: string;
+    size?: number;
+}
+
 /**
- * Download the tarball as an ArrayBuffer via Obsidian's native HTTP client.
- * This buffers the full compressed payload in memory (no streaming), but
- * is the only way to bypass iOS WebView CORS on codeload.github.com.
- * Subsequent tar parsing is incremental so disk write memory stays low.
+ * Get the full recursive file tree at a commit. Returns paths + blob SHAs.
+ * Throws if the tree is truncated (>100k files; would require pagination).
  */
-export async function downloadTarball(
+export async function getTree(
     ref: RepoRef,
     sha: string,
     pat: string
-): Promise<ArrayBuffer> {
+): Promise<TreeEntry[]> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/git/trees/${sha}?recursive=1`;
     const res = await requestUrl({
-        url: tarballUrl(ref, sha),
+        url,
         method: "GET",
         headers: authHeaders(pat),
         throw: false,
     });
     if (res.status < 200 || res.status >= 300) {
         throw new Error(
-            `Tarball download failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+            `Tree fetch failed: ${res.status} — ${(res.text || "").slice(0, 300)}`
+        );
+    }
+    const data = res.json as { tree: TreeEntry[]; truncated: boolean };
+    if (data.truncated) {
+        throw new Error(
+            "Repo tree exceeds GitHub's single-request limit (~100k files). Vault Sync needs pagination support — file an issue."
+        );
+    }
+    return data.tree;
+}
+
+/**
+ * Download a single file's raw bytes via the Contents API.
+ * Uses `Accept: application/vnd.github.raw` so requestUrl returns
+ * an ArrayBuffer directly — no base64 overhead.
+ * GitHub limit: 100MB per file.
+ */
+export async function getFileRaw(
+    ref: RepoRef,
+    path: string,
+    commitSha: string,
+    pat: string
+): Promise<ArrayBuffer> {
+    const url = `${API_BASE}/repos/${ref.owner}/${ref.repo}/contents/${encodeURIComponent(
+        path
+    ).replace(/%2F/g, "/")}?ref=${commitSha}`;
+    const res = await requestUrl({
+        url,
+        method: "GET",
+        headers: {
+            ...authHeaders(pat),
+            Accept: "application/vnd.github.raw",
+        },
+        throw: false,
+    });
+    if (res.status < 200 || res.status >= 300) {
+        throw new Error(
+            `File fetch failed (${path}): ${res.status} — ${(res.text || "").slice(0, 200)}`
         );
     }
     return res.arrayBuffer;
