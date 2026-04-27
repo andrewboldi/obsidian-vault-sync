@@ -19,7 +19,7 @@ async function ensureDir(plugin: VaultSyncPlugin, dirPath: string): Promise<void
     if (!dirPath || dirPath === "/" || dirPath === ".") return;
     try {
         await plugin.app.vault.adapter.mkdir(dirPath);
-    } catch (_e) {
+    } catch {
         // already exists
     }
 }
@@ -73,7 +73,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     if (!repoUrl) throw new Error("Set a repo URL in Vault Sync settings.");
 
     const ref = parseRepoUrl(repoUrl);
-    const notice = new Notice("Vault Sync: resolving branch…", 0);
+    const notice = new Notice("Resolving branch…", 0);
 
     let sha: string;
     try {
@@ -83,7 +83,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
         throw e;
     }
 
-    notice.setMessage(`Vault Sync: listing ${ref.owner}/${ref.repo}@${sha.slice(0, 7)}…`);
+    notice.setMessage(`Listing ${ref.owner}/${ref.repo}@${sha.slice(0, 7)}…`);
 
     let tree: TreeEntry[];
     try {
@@ -97,7 +97,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     const blobs = tree.filter((e) => e.type === "blob");
 
     notice.setMessage(
-        `Vault Sync: ${blobs.length} files, ${dirs.length} dirs — preparing…`
+        `${blobs.length} files, ${dirs.length} dirs — preparing…`
     );
 
     // Pre-create all directories sequentially (cheap, prevents race conditions).
@@ -118,7 +118,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
         byteCount += content.byteLength;
         if (fileCount % PROGRESS_EVERY === 0) {
             notice.setMessage(
-                `Vault Sync: ${fileCount}/${blobs.length} files, ${formatBytes(byteCount)}`
+                `${fileCount}/${blobs.length} files, ${formatBytes(byteCount)}`
             );
         }
     });
@@ -128,7 +128,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     await plugin.saveSettings();
 
     notice.setMessage(
-        `Vault Sync: seed complete — ${fileCount} files, ${formatBytes(byteCount)} @ ${sha.slice(0, 7)}`
+        `Seed complete — ${fileCount} files, ${formatBytes(byteCount)} @ ${sha.slice(0, 7)}`
     );
     setTimeout(() => notice.hide(), 6000);
 }

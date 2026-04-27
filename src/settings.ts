@@ -31,10 +31,8 @@ export class VaultSyncSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl("h2", { text: "Vault Sync (REST)" });
-
         new Setting(containerEl)
-            .setName("GitHub Personal Access Token")
+            .setName("GitHub personal access token")
             .setDesc(
                 "Fine-grained or classic PAT with repo (contents: read/write) scope on the target repo."
             )
@@ -50,7 +48,7 @@ export class VaultSyncSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Repository URL")
-            .setDesc("e.g. https://github.com/owner/repo")
+            .setDesc("For example, https://github.com/owner/repo")
             .addText((text) =>
                 text
                     .setPlaceholder("https://github.com/owner/repo")

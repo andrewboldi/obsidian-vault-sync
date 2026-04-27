@@ -11,30 +11,28 @@ import {
     type TreeUpdateEntry,
 } from "./github";
 
-const SKIP_PATHS = new Set<string>([
-    ".obsidian/workspace.json",
-    ".obsidian/workspace-mobile.json",
-    ".obsidian/cache",
-    ".obsidian/appearance.json",
-    ".DS_Store",
-    "_GIT-DEBUG-ERROR.md",
-]);
-
-const SKIP_PREFIXES = [
-    ".trash/",
+function buildSkipFn(configDir: string): (path: string) => boolean {
+    const skipPaths = new Set<string>([
+        `${configDir}/workspace.json`,
+        `${configDir}/workspace-mobile.json`,
+        `${configDir}/cache`,
+        `${configDir}/appearance.json`,
+        ".DS_Store",
+        "_GIT-DEBUG-ERROR.md",
+    ]);
     // Plugin installs are per-device. Each Obsidian install pulls plugin code
     // from its own source (community store, BRAT, etc). Syncing plugin folders
     // bloats the repo and risks leaking credentials stored in plugin data.json.
-    // The list of *which* plugins to enable still syncs via .obsidian/community-plugins.json.
-    ".obsidian/plugins/",
-];
-
-function shouldSkip(path: string): boolean {
-    if (SKIP_PATHS.has(path)) return true;
-    if (path.endsWith(".tmp")) return true;
-    for (const p of SKIP_PREFIXES) if (path.startsWith(p)) return true;
-    if (path.startsWith(".obsidian/workspace")) return true;
-    return false;
+    // The list of *which* plugins to enable still syncs via community-plugins.json.
+    const skipPrefixes = [".trash/", `${configDir}/plugins/`];
+    const workspacePrefix = `${configDir}/workspace`;
+    return (path: string) => {
+        if (skipPaths.has(path)) return true;
+        if (path.endsWith(".tmp")) return true;
+        for (const p of skipPrefixes) if (path.startsWith(p)) return true;
+        if (path.startsWith(workspacePrefix)) return true;
+        return false;
+    };
 }
 
 async function gitBlobSha(content: ArrayBuffer): Promise<string> {
@@ -86,23 +84,24 @@ export async function pushToGitHub(
     const ref = parseRepoUrl(repoUrl);
     const notice = opts.silent
         ? null
-        : new Notice("Vault Sync: scanning local changes…", 0);
+        : new Notice("Scanning local changes…", 0);
 
     // 1. Detect divergence — refuse if remote moved.
     const remoteHead = await getBranchSha(ref, branch || "main", pat);
     if (remoteHead !== lastCommitSha) {
         notice?.hide();
         throw new Error(
-            `Remote advanced (${remoteHead.slice(0, 7)} vs local baseline ${lastCommitSha.slice(0, 7)}). Run 'Vault Sync: Pull from GitHub' first.`
+            `Remote advanced (${remoteHead.slice(0, 7)} vs local baseline ${lastCommitSha.slice(0, 7)}). Run 'Pull from GitHub' first.`
         );
     }
 
     // 2. Walk vault, hash every non-skipped file, compare to fileShaMap.
+    const shouldSkip = buildSkipFn(plugin.app.vault.configDir);
     const allPaths = await listAllVaultFiles(plugin);
     const localFiles = allPaths.filter((p) => !shouldSkip(p));
     const localSet = new Set(localFiles);
 
-    notice?.setMessage(`Vault Sync: hashing ${localFiles.length} files…`);
+    notice?.setMessage(`Hashing ${localFiles.length} files…`);
 
     type Change = { path: string; kind: "add" | "modify"; content: ArrayBuffer };
     const changes: Change[] = [];
@@ -121,7 +120,7 @@ export async function pushToGitHub(
         scanned++;
         if (scanned % 50 === 0) {
             notice?.setMessage(
-                `Vault Sync: hashed ${scanned}/${localFiles.length}…`
+                `Hashed ${scanned}/${localFiles.length}…`
             );
         }
     }
@@ -131,14 +130,14 @@ export async function pushToGitHub(
     }
 
     if (changes.length === 0 && deletions.length === 0) {
-        notice?.setMessage("Vault Sync: nothing to push");
+        notice?.setMessage("Nothing to push");
         setTimeout(() => notice?.hide(), 4000);
         return;
     }
 
     // 3. Upload blobs for changed files (sequential to keep memory bounded for large files).
     notice?.setMessage(
-        `Vault Sync: uploading ${changes.length} blobs (${deletions.length} deletions)…`
+        `Uploading ${changes.length} blobs (${deletions.length} deletions)…`
     );
 
     const treeEntries: TreeUpdateEntry[] = [];
@@ -156,7 +155,7 @@ export async function pushToGitHub(
         bytes += c.content.byteLength;
         if (uploaded % 5 === 0) {
             notice?.setMessage(
-                `Vault Sync: uploaded ${uploaded}/${changes.length} (${formatBytes(bytes)})`
+                `Uploaded ${uploaded}/${changes.length} (${formatBytes(bytes)})`
             );
         }
     }
@@ -166,12 +165,12 @@ export async function pushToGitHub(
     }
 
     // 4. Build new tree on top of the last commit's tree.
-    notice?.setMessage("Vault Sync: creating tree…");
+    notice?.setMessage("Creating tree…");
     const baseTreeSha = await getCommitTreeSha(ref, lastCommitSha, pat);
     const newTreeSha = await createTree(ref, baseTreeSha, treeEntries, pat);
 
     // 5. Create commit.
-    notice?.setMessage("Vault Sync: creating commit…");
+    notice?.setMessage("Creating commit…");
     const message = `Vault Sync: ${changes.length} changed, ${deletions.length} deleted from mobile`;
     const newCommitSha = await createCommit(
         ref,
@@ -182,7 +181,7 @@ export async function pushToGitHub(
     );
 
     // 6. Update branch ref.
-    notice?.setMessage("Vault Sync: updating branch…");
+    notice?.setMessage("Updating branch…");
     const upd = await updateRef(ref, branch || "main", newCommitSha, pat);
     if (!upd.ok) {
         notice?.hide();
@@ -204,7 +203,7 @@ export async function pushToGitHub(
     await plugin.saveSettings();
 
     notice?.setMessage(
-        `Vault Sync: pushed ${changes.length} changes (${formatBytes(bytes)}) → ${newCommitSha.slice(0, 7)}`
+        `Pushed ${changes.length} changes (${formatBytes(bytes)}) → ${newCommitSha.slice(0, 7)}`
     );
     setTimeout(() => notice?.hide(), 6000);
 }

@@ -18,7 +18,7 @@ async function ensureDir(plugin: VaultSyncPlugin, dirPath: string): Promise<void
     if (!dirPath || dirPath === "/" || dirPath === ".") return;
     try {
         await plugin.app.vault.adapter.mkdir(dirPath);
-    } catch (_e) {
+    } catch {
         /* exists */
     }
 }
@@ -41,7 +41,7 @@ async function ensureParentDirs(
 async function safeRemove(plugin: VaultSyncPlugin, path: string): Promise<void> {
     try {
         await plugin.app.vault.adapter.remove(path);
-    } catch (_e) {
+    } catch {
         /* already gone */
     }
 }
@@ -78,35 +78,35 @@ export async function pullFromGitHub(
     if (!repoUrl) throw new Error("Set a repo URL in Vault Sync settings.");
     if (!lastCommitSha) {
         throw new Error(
-            "No baseline commit recorded. Run 'Vault Sync: Seed from GitHub' first."
+            "No baseline commit recorded. Run 'Seed from GitHub' first."
         );
     }
 
     const ref = parseRepoUrl(repoUrl);
     const notice = opts.silent
         ? null
-        : new Notice("Vault Sync: checking remote…", 0);
+        : new Notice("Checking remote…", 0);
 
     const headSha = await getBranchSha(ref, branch || "main", pat);
     if (headSha === lastCommitSha) {
         if (notice) {
-            notice?.setMessage("Vault Sync: already up to date");
+            notice?.setMessage("Already up to date");
             setTimeout(() => notice?.hide(), 4000);
         }
         return;
     }
 
-    notice?.setMessage(`Vault Sync: comparing ${lastCommitSha.slice(0, 7)}…${headSha.slice(0, 7)}`);
+    notice?.setMessage(`Comparing ${lastCommitSha.slice(0, 7)}…${headSha.slice(0, 7)}`);
 
     const cmp = await compareCommits(ref, lastCommitSha, headSha, pat);
 
     if (cmp.status === "diverged") {
         notice?.setMessage(
-            "Vault Sync: remote diverged from local baseline. Manual resolution needed (Phase 3 push will detect this)."
+            "Remote diverged from local baseline. Manual resolution needed (push will detect this)."
         );
         setTimeout(() => notice?.hide(), 10000);
         throw new Error(
-            `Remote and local have diverged (ahead ${cmp.ahead_by}, behind ${cmp.behind_by}). Vault Sync can only fast-forward in Phase 2.`
+            `Remote and local have diverged (ahead ${cmp.ahead_by}, behind ${cmp.behind_by}). Pull only supports fast-forward updates.`
         );
     }
 
@@ -114,14 +114,14 @@ export async function pullFromGitHub(
     if (files.length === 0) {
         plugin.settings.lastCommitSha = headSha;
         await plugin.saveSettings();
-        notice?.setMessage("Vault Sync: pull complete (no file changes)");
+        notice?.setMessage("Pull complete (no file changes)");
         setTimeout(() => notice?.hide(), 4000);
         return;
     }
 
     if (files.length === 300) {
         new Notice(
-            "Vault Sync: compare returned exactly 300 files (GitHub's per-call cap). Some changes may be missing — re-seed if pull seems incomplete.",
+            "Compare returned exactly 300 files (GitHub's per-call cap). Some changes may be missing — re-seed if pull seems incomplete.",
             10000
         );
     }
@@ -150,7 +150,7 @@ export async function pullFromGitHub(
     }
 
     notice?.setMessage(
-        `Vault Sync: ${toFetch.length} to fetch, ${toRemove.length} to remove…`
+        `${toFetch.length} to fetch, ${toRemove.length} to remove…`
     );
 
     // Apply removals first (cheap, sequential).
@@ -171,7 +171,7 @@ export async function pullFromGitHub(
         bytes += content.byteLength;
         if (done % 5 === 0) {
             notice?.setMessage(
-                `Vault Sync: ${done}/${toFetch.length} files, ${formatBytes(bytes)}`
+                `${done}/${toFetch.length} files, ${formatBytes(bytes)}`
             );
         }
     });
@@ -181,7 +181,7 @@ export async function pullFromGitHub(
     await plugin.saveSettings();
 
     notice?.setMessage(
-        `Vault Sync: pull complete — ${toFetch.length} updated, ${toRemove.length} removed @ ${headSha.slice(0, 7)}`
+        `Pull complete — ${toFetch.length} updated, ${toRemove.length} removed @ ${headSha.slice(0, 7)}`
     );
     setTimeout(() => notice?.hide(), 6000);
 }

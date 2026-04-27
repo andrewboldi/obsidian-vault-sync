@@ -21,7 +21,7 @@ export default class VaultSyncPlugin extends Plugin {
         this.statusBar = this.addStatusBarItem();
         this.updateStatusBar("idle");
 
-        this.addRibbonIcon("refresh-cw", "Vault Sync: Sync now", () => {
+        this.addRibbonIcon("refresh-cw", "Sync vault now", () => {
             void this.runWithErrorNotice("sync", () => this.runSync(false));
         });
 
