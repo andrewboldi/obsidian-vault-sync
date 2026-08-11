@@ -7,7 +7,7 @@ import {
     parseRepoUrl,
     type TreeEntry,
 } from "./github";
-import { buildSkipFn } from "./push";
+import { buildSkipFn, gitBlobSha } from "./push";
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -112,12 +112,30 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
     const fileShaMap: Record<string, string> = {};
 
     await runWithConcurrency(blobs, CONCURRENCY, async (entry) => {
-        const content = await getFileRaw(ref, entry.path, sha, pat);
-        await ensureParentDirs(plugin, entry.path);
-        await plugin.app.vault.adapter.writeBinary(entry.path, content);
+        let skipDownload = false;
+        try {
+            const stat = await plugin.app.vault.adapter.stat(entry.path);
+            if (stat) {
+                const localContent = await plugin.app.vault.adapter.readBinary(entry.path);
+                const localSha = await gitBlobSha(localContent);
+                if (localSha === entry.sha) {
+                    skipDownload = true;
+                    byteCount += stat.size;
+                }
+            }
+        } catch {
+            // file does not exist locally
+        }
+
+        if (!skipDownload) {
+            const content = await getFileRaw(ref, entry.path, sha, pat);
+            await ensureParentDirs(plugin, entry.path);
+            await plugin.app.vault.adapter.writeBinary(entry.path, content);
+            byteCount += content.byteLength;
+        }
+
         fileShaMap[entry.path] = entry.sha;
         fileCount++;
-        byteCount += content.byteLength;
         if (fileCount % PROGRESS_EVERY === 0) {
             notice.setMessage(
                 `${fileCount}/${blobs.length} files, ${formatBytes(byteCount)}`

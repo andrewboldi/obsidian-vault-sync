@@ -35,7 +35,7 @@ export function buildSkipFn(configDir: string): (path: string) => boolean {
     };
 }
 
-async function gitBlobSha(content: ArrayBuffer): Promise<string> {
+export async function gitBlobSha(content: ArrayBuffer): Promise<string> {
     const header = new TextEncoder().encode(`blob ${content.byteLength}\0`);
     const combined = new Uint8Array(header.byteLength + content.byteLength);
     combined.set(header, 0);
