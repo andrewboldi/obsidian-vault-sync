@@ -7,6 +7,7 @@ import {
     parseRepoUrl,
     type TreeEntry,
 } from "./github";
+import { buildSkipFn } from "./push";
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -93,8 +94,9 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
         throw e;
     }
 
-    const dirs = tree.filter((e) => e.type === "tree");
-    const blobs = tree.filter((e) => e.type === "blob");
+    const shouldSkip = buildSkipFn(plugin.app.vault.configDir);
+    const dirs = tree.filter((e) => e.type === "tree" && !shouldSkip(e.path));
+    const blobs = tree.filter((e) => e.type === "blob" && !shouldSkip(e.path));
 
     notice.setMessage(
         `${blobs.length} files, ${dirs.length} dirs — preparing…`

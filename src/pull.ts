@@ -7,6 +7,7 @@ import {
     parseRepoUrl,
     type CompareFile,
 } from "./github";
+import { buildSkipFn } from "./push";
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -129,7 +130,12 @@ export async function pullFromGitHub(
     const toFetch: CompareFile[] = [];
     const toRemove: string[] = [];
 
+    const shouldSkip = buildSkipFn(plugin.app.vault.configDir);
+
     for (const f of files) {
+        if (shouldSkip(f.filename)) continue;
+        if (f.previous_filename && shouldSkip(f.previous_filename)) continue;
+
         switch (f.status) {
             case "added":
             case "modified":
