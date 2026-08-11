@@ -11,7 +11,7 @@ import {
     type TreeUpdateEntry,
 } from "./github";
 
-function buildSkipFn(configDir: string): (path: string) => boolean {
+export function buildSkipFn(configDir: string): (path: string) => boolean {
     const skipPaths = new Set<string>([
         `${configDir}/workspace.json`,
         `${configDir}/workspace-mobile.json`,
@@ -35,7 +35,7 @@ function buildSkipFn(configDir: string): (path: string) => boolean {
     };
 }
 
-async function gitBlobSha(content: ArrayBuffer): Promise<string> {
+export async function gitBlobSha(content: ArrayBuffer): Promise<string> {
     const header = new TextEncoder().encode(`blob ${content.byteLength}\0`);
     const combined = new Uint8Array(header.byteLength + content.byteLength);
     combined.set(header, 0);
@@ -126,7 +126,13 @@ export async function pushToGitHub(
     }
 
     for (const trackedPath of Object.keys(fileShaMap)) {
-        if (!localSet.has(trackedPath)) deletions.push(trackedPath);
+        if (!localSet.has(trackedPath)) {
+            if (shouldSkip(trackedPath)) {
+                delete fileShaMap[trackedPath];
+            } else {
+                deletions.push(trackedPath);
+            }
+        }
     }
 
     if (changes.length === 0 && deletions.length === 0) {
