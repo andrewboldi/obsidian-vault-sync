@@ -7,6 +7,7 @@ import {
     parseRepoUrl,
     type CompareFile,
 } from "./github";
+import { buildSkipFn } from "./push";
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -129,16 +130,26 @@ export async function pullFromGitHub(
     const toFetch: CompareFile[] = [];
     const toRemove: string[] = [];
 
+    const shouldSkip = buildSkipFn(plugin.app.vault.configDir);
+
     for (const f of files) {
+        // A rename across the skip boundary still has a non-skipped side
+        // that must be applied: remove the old path if it's tracked, fetch
+        // the new path if it's tracked.
+        if (f.status === "renamed") {
+            if (f.previous_filename && !shouldSkip(f.previous_filename)) {
+                toRemove.push(f.previous_filename);
+            }
+            if (!shouldSkip(f.filename)) toFetch.push(f);
+            continue;
+        }
+        if (shouldSkip(f.filename)) continue;
+
         switch (f.status) {
             case "added":
             case "modified":
             case "changed":
             case "copied":
-                toFetch.push(f);
-                break;
-            case "renamed":
-                if (f.previous_filename) toRemove.push(f.previous_filename);
                 toFetch.push(f);
                 break;
             case "removed":
