@@ -8,6 +8,8 @@ export interface VaultSyncSettings {
     lastCommitSha: string;
     fileShaMap: Record<string, string>;
     autoSyncIntervalMinutes: number; // 0 = disabled
+    syncAfterEditSeconds: number; // 0 = disabled
+    syncOnOpen: boolean;
 }
 
 export const DEFAULT_SETTINGS: VaultSyncSettings = {
@@ -17,6 +19,8 @@ export const DEFAULT_SETTINGS: VaultSyncSettings = {
     lastCommitSha: "",
     fileShaMap: {},
     autoSyncIntervalMinutes: 0,
+    syncAfterEditSeconds: 0,
+    syncOnOpen: false,
 };
 
 export class VaultSyncSettingTab extends PluginSettingTab {
@@ -86,6 +90,36 @@ export class VaultSyncSettingTab extends PluginSettingTab {
                         this.plugin.settings.autoSyncIntervalMinutes = n;
                         await this.plugin.saveSettings();
                         this.plugin.scheduleAutoSync();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Sync after edits (seconds idle)")
+            .setDesc(
+                "Pull then push once you've stopped editing for N seconds. 0 disables. Recommended: 30-60."
+            )
+            .addText((text) =>
+                text
+                    .setPlaceholder("0")
+                    .setValue(String(this.plugin.settings.syncAfterEditSeconds ?? 0))
+                    .onChange(async (value) => {
+                        const n = Math.max(0, Math.floor(Number(value) || 0));
+                        this.plugin.settings.syncAfterEditSeconds = n;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Sync on open")
+            .setDesc(
+                "Pull then push when Obsidian starts and when it comes back to the foreground."
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.syncOnOpen ?? false)
+                    .onChange(async (value) => {
+                        this.plugin.settings.syncOnOpen = value;
+                        await this.plugin.saveSettings();
                     })
             );
 

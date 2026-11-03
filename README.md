@@ -19,7 +19,7 @@ This plugin syncs your Obsidian vault to a GitHub repository **without ever invo
 | **Seed** (initial download) | `GET /git/trees/{sha}?recursive=1` for the file list, then `GET /contents/{path}` per file (raw bytes, no base64 overhead) |
 | **Pull** | `GET /compare/{old}...{new}` for the file-level diff, then per-file fetch of only the changed ones |
 | **Push** | `POST /git/blobs` per changed file → `POST /git/trees` (delta on `base_tree`) → `POST /git/commits` → `PATCH /git/refs/heads/{branch}`. One atomic commit. |
-| **Auto-sync** | `setInterval` runs pull then push every N minutes, silent unless something errors |
+| **Auto-sync** | Pull then push, silent unless something errors. Triggered every N minutes, N seconds after you stop editing, and/or when Obsidian opens or returns to the foreground (each optional). |
 
 Memory use during any operation: **bounded by your largest single file**, not your vault size. A 1GB vault syncs as cleanly as a 1MB one.
 
@@ -52,6 +52,8 @@ Memory use during any operation: **bounded by your largest single file**, not yo
    - **Repository URL:** `https://github.com/{you}/{repo}` (or `{you}/{repo}`)
    - **Branch:** `main` (or whatever your default branch is)
    - **Auto-sync interval (minutes):** `1` for near-realtime, `0` to disable
+   - **Sync after edits (seconds idle):** `30`–`60` to sync shortly after you stop typing, `0` to disable
+   - **Sync on open:** sync when Obsidian starts and when it comes back to the foreground (recommended on mobile)
 3. Run **Vault Sync: Seed from GitHub** (command palette).
 
 That's it. Edit on phone → 1 minute later it's a real commit on GitHub. Edit on desktop → 1 minute later it's on phone.
