@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type VaultSyncPlugin from "./main";
+import type { ConflictEntry } from "./conflicts";
 
 export interface VaultSyncSettings {
     pat: string;
@@ -10,6 +11,8 @@ export interface VaultSyncSettings {
     autoSyncIntervalMinutes: number; // 0 = disabled
     syncAfterEditSeconds: number; // 0 = disabled
     syncOnOpen: boolean;
+    /** Unresolved pull conflicts, keyed by path. Sync is blocked until empty. */
+    conflicts: Record<string, ConflictEntry>;
 }
 
 export const DEFAULT_SETTINGS: VaultSyncSettings = {
@@ -21,6 +24,7 @@ export const DEFAULT_SETTINGS: VaultSyncSettings = {
     autoSyncIntervalMinutes: 0,
     syncAfterEditSeconds: 0,
     syncOnOpen: false,
+    conflicts: {},
 };
 
 export class VaultSyncSettingTab extends PluginSettingTab {

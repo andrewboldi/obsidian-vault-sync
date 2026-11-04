@@ -10,6 +10,7 @@ import {
     updateRef,
     type TreeUpdateEntry,
 } from "./github";
+import { assertNoConflicts } from "./conflicts";
 
 export function buildSkipFn(configDir: string): (path: string) => boolean {
     const skipPaths = new Set<string>([
@@ -80,6 +81,7 @@ export async function pushToGitHub(
     if (!lastCommitSha) {
         throw new Error("No baseline commit. Seed first.");
     }
+    await assertNoConflicts(plugin);
 
     const ref = parseRepoUrl(repoUrl);
     const notice = opts.silent

@@ -1,4 +1,4 @@
-import { Notice } from "obsidian";
+import { Notice, TFile } from "obsidian";
 import type VaultSyncPlugin from "./main";
 import {
     compareCommits,
@@ -6,8 +6,17 @@ import {
     getFileRaw,
     parseRepoUrl,
     type CompareFile,
+    type RepoRef,
 } from "./github";
-import { buildSkipFn } from "./push";
+import { buildSkipFn, gitBlobSha } from "./push";
+import {
+    assertNoConflicts,
+    conflictCopyPath,
+    decodeText,
+    describeConflicts,
+    mergeText,
+    type ConflictEntry,
+} from "./conflicts";
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -68,6 +77,24 @@ async function runWithConcurrency<T>(
     await Promise.all(workers);
 }
 
+async function readLocal(plugin: VaultSyncPlugin, path: string): Promise<ArrayBuffer | null> {
+    if (!(await plugin.app.vault.adapter.exists(path))) return null;
+    try {
+        return await plugin.app.vault.adapter.readBinary(path);
+    } catch {
+        return null;
+    }
+}
+
+/** File content at the last synced commit; empty if it can't be fetched (merges against nothing). */
+async function getBaseContent(ref: RepoRef, path: string, baseSha: string, pat: string): Promise<ArrayBuffer> {
+    try {
+        return await getFileRaw(ref, path, baseSha, pat);
+    } catch {
+        return new ArrayBuffer(0);
+    }
+}
+
 const CONCURRENCY = 8;
 
 export async function pullFromGitHub(
@@ -82,6 +109,7 @@ export async function pullFromGitHub(
             "No baseline commit recorded. Run 'Seed from GitHub' first."
         );
     }
+    await assertNoConflicts(plugin);
 
     const ref = parseRepoUrl(repoUrl);
     const notice = opts.silent
@@ -164,20 +192,86 @@ export async function pullFromGitHub(
         `${toFetch.length} to fetch, ${toRemove.length} to remove…`
     );
 
-    // Apply removals first (cheap, sequential).
+    // Files deleted on GitHub but edited here, and vice versa: keep the edits.
+    const keptDeleted: string[] = [];
+    const restored: string[] = [];
+    const merged: string[] = [];
+    const conflicted: string[] = [];
+
+    const recordConflict = async (path: string, sha: string, entry: ConflictEntry) => {
+        // Persist right away so a crash mid-pull can't leave markers on disk untracked.
+        fileShaMap[path] = sha;
+        plugin.settings.conflicts = { ...plugin.settings.conflicts, [path]: entry };
+        conflicted.push(path);
+        await plugin.saveSettings();
+    };
+
+    // Apply removals first (cheap, sequential). Only remove files unchanged since last sync.
     for (const path of toRemove) {
-        await safeRemove(plugin, path);
+        const known = fileShaMap[path];
         delete fileShaMap[path];
+        const local = await readLocal(plugin, path);
+        if (local === null) continue;
+        if (known !== undefined && (await gitBlobSha(local)) === known) {
+            await safeRemove(plugin, path);
+        } else {
+            keptDeleted.push(path);
+        }
     }
 
     let done = 0;
     let bytes = 0;
 
     await runWithConcurrency(toFetch, CONCURRENCY, async (entry) => {
-        const content = await getFileRaw(ref, entry.filename, headSha, pat);
-        await ensureParentDirs(plugin, entry.filename);
-        await plugin.app.vault.adapter.writeBinary(entry.filename, content);
-        fileShaMap[entry.filename] = entry.sha;
+        const path = entry.filename;
+        const content = await getFileRaw(ref, path, headSha, pat);
+        // Read local only after the fetch so an edit made meanwhile isn't missed.
+        const known = fileShaMap[path];
+        const local = await readLocal(plugin, path);
+        const localSha = local === null ? null : await gitBlobSha(local);
+
+        if (local === null || localSha === known || localSha === entry.sha) {
+            // Unchanged here (or already identical): take GitHub's version.
+            if (local === null && known !== undefined) restored.push(path);
+            if (localSha !== entry.sha) {
+                await ensureParentDirs(plugin, path);
+                await plugin.app.vault.adapter.writeBinary(path, content);
+            }
+            fileShaMap[path] = entry.sha;
+        } else {
+            // Changed on both sides: 3-way merge text, conflict-copy anything else.
+            const base = known !== undefined
+                ? await getBaseContent(ref, path, lastCommitSha, pat)
+                : new ArrayBuffer(0);
+            const baseText = decodeText(base);
+            const localText = decodeText(local);
+            const remoteText = decodeText(content);
+            if (baseText !== null && localText !== null && remoteText !== null) {
+                let conflict = false;
+                const doMerge = (current: string): string => {
+                    const m = mergeText(baseText, current, remoteText, `remote ${headSha.slice(0, 7)}`);
+                    conflict = m.conflict;
+                    return m.text;
+                };
+                const file = plugin.app.vault.getAbstractFileByPath(path);
+                if (file instanceof TFile) {
+                    // Merge against the latest content, including an open editor's.
+                    await plugin.app.vault.process(file, doMerge);
+                } else {
+                    await plugin.app.vault.adapter.write(path, doMerge(localText));
+                }
+                if (conflict) {
+                    await recordConflict(path, entry.sha, {});
+                } else {
+                    fileShaMap[path] = entry.sha;
+                    merged.push(path);
+                }
+            } else {
+                const copyPath = conflictCopyPath(path);
+                await plugin.app.vault.adapter.writeBinary(copyPath, content);
+                await recordConflict(path, entry.sha, { copyPath });
+            }
+        }
         done++;
         bytes += content.byteLength;
         if (done % 5 === 0) {
@@ -187,12 +281,32 @@ export async function pullFromGitHub(
         }
     });
 
+    // Advance the baseline even with conflicts: resolved files then push as
+    // ordinary changes on top of the new head.
     plugin.settings.lastCommitSha = headSha;
     plugin.settings.fileShaMap = fileShaMap;
     await plugin.saveSettings();
 
+    // Shown even for silent auto-sync: the user needs to know about these.
+    if (keptDeleted.length > 0) {
+        new Notice(
+            `Kept ${keptDeleted.length} file(s) you edited here that were deleted on GitHub: ${keptDeleted.join(", ")}. They'll be re-added on push — delete them if unwanted.`,
+            15000
+        );
+    }
+    if (restored.length > 0) {
+        new Notice(
+            `Restored ${restored.length} file(s) you deleted here that were edited on GitHub: ${restored.join(", ")}.`,
+            15000
+        );
+    }
+    if (conflicted.length > 0) {
+        notice?.hide();
+        throw new Error(describeConflicts(plugin.settings.conflicts));
+    }
+
     notice?.setMessage(
-        `Pull complete — ${toFetch.length} updated, ${toRemove.length} removed @ ${headSha.slice(0, 7)}`
+        `Pull complete — ${toFetch.length} updated${merged.length ? ` (${merged.length} merged)` : ""}, ${toRemove.length} removed @ ${headSha.slice(0, 7)}`
     );
     setTimeout(() => notice?.hide(), 6000);
 }

@@ -145,6 +145,7 @@ export async function seedFromGitHub(plugin: VaultSyncPlugin): Promise<void> {
 
     plugin.settings.lastCommitSha = sha;
     plugin.settings.fileShaMap = fileShaMap;
+    plugin.settings.conflicts = {};
     await plugin.saveSettings();
 
     notice.setMessage(

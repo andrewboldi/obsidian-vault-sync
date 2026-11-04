@@ -67,11 +67,23 @@ That's it. Edit on phone → 1 minute later it's a real commit on GitHub. Edit o
 | **Vault Sync: Push to GitHub** | Detect local changes, upload as one atomic commit. |
 | **Vault Sync: Sync now** | Pull then push. Same as the ribbon icon. |
 
-## How conflict handling works (and doesn't)
+## How conflict handling works
 
 - **Push refuses if remote diverged** since your last pull. Run *Pull* then retry *Push*. This is intentional — the plugin won't silently overwrite remote work.
 - **Pull refuses on diverged history** for now. Reseed if you really need to discard local state.
-- **Same file edited on both sides:** last-pull-then-push wins. There is no merge engine. For prose vaults this is rare and tolerable; for collaborative editing, use desktop git for resolution.
+- **Same file edited on both sides:** pull does a git-style 3-way merge against the last synced version.
+  - Edits to different parts of a text file merge automatically.
+  - Overlapping edits get git conflict markers in the file:
+    ```
+    <<<<<<< local
+    your version
+    =======
+    GitHub's version
+    >>>>>>> remote 1a2b3c4
+    ```
+  - Images and other binary files can't be merged: your file stays in place and GitHub's version is saved beside it as `name (remote conflict).ext`.
+- **Conflicts block sync until resolved**, like git with unmerged files: pull and push both refuse and name the conflicted files. To resolve, keep the text you want and delete all three marker lines (`<<<<<<<`, `=======`, `>>>>>>>`), or for a binary file delete one of the two copies (to keep GitHub's, delete the original and rename the copy back). Then sync again.
+- **Edited on one side, deleted on the other:** the edited version is kept and you get a notice. A file you edited that was deleted on GitHub is re-added on the next push.
 
 ## What gets skipped (never pushed)
 
