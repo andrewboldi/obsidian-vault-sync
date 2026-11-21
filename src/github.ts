@@ -41,7 +41,10 @@ export async function getBranchSha(
     const res = await requestUrl({
         url,
         method: "GET",
-        headers: authHeaders(pat),
+        // GitHub serves this with `Cache-Control: private, max-age=60`. A cached
+        // response returns the head from before our own last push, so force
+        // revalidation.
+        headers: { ...authHeaders(pat), "Cache-Control": "no-cache" },
         throw: false,
     });
     if (res.status < 200 || res.status >= 300) {

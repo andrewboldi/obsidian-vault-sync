@@ -139,6 +139,14 @@ export async function pullFromGitHub(
         );
     }
 
+    if (cmp.status === "behind") {
+        // Remote head is an ancestor of the baseline; rewinding it would make push drop commits.
+        notice?.hide();
+        throw new Error(
+            `Remote head ${headSha.slice(0, 7)} is behind local baseline ${lastCommitSha.slice(0, 7)} (stale read or force-push). Try again shortly.`
+        );
+    }
+
     const files = cmp.files ?? [];
     if (files.length === 0) {
         plugin.settings.lastCommitSha = headSha;
